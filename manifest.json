@@ -1,0 +1,10 @@
+{
+	"id": "remember-scroll-position",
+	"name": "Remember Scroll Position",
+	"version": "1.0.0",
+	"minAppVersion": "1.4.0",
+	"description": "Remembers your cursor and scroll position for each note. Navigate away and come back — you'll be right where you left off.",
+	"author": "Mei Park",
+	"authorUrl": "https://github.com/meimakes",
+	"isDesktopOnly": false
+}

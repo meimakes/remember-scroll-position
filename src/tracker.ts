@@ -62,6 +62,9 @@ export class PositionTracker {
 	/** Whether the workspace has finished initial layout */
 	private layoutReady: boolean;
 
+	/** The last leaf we tracked, so we can save its position on switch-away */
+	private lastLeaf: FileLeaf | null = null;
+
 	/** Debounced state saver */
 	private saveDebounced: Debouncer<[], void>;
 
@@ -118,12 +121,24 @@ export class PositionTracker {
 			app.workspace.on("file-open", (file: TFile) => this.handleFileOpen(file))
 		);
 
-		// Active leaf change — block saves temporarily so the new file's
-		// initial scroll=0 doesn't overwrite the previously saved position.
+		// Active leaf change — save outgoing leaf's position, then block saves
+		// so the new file's initial scroll=0 doesn't overwrite anything.
 		this.plugin.registerEvent(
-			app.workspace.on("active-leaf-change", () => {
+			app.workspace.on("active-leaf-change", (newLeaf: WorkspaceLeaf | null) => {
+				// Save the PREVIOUS leaf's position before it's gone
+				this.saveDebounced.cancel();
+				if (this.lastLeaf?.view?.file) {
+					this.saveLeafPosition(this.lastLeaf);
+				}
+
+				// Track the new leaf for next switch
+				if (newLeaf?.view && newLeaf.view.getViewType() === "markdown") {
+					this.lastLeaf = newLeaf as FileLeaf;
+				} else {
+					this.lastLeaf = null;
+				}
+
 				this.filesOpening++;
-				// Safety timeout: always unblock after 1s even if restore doesn't fire
 				window.setTimeout(() => {
 					this.filesOpening = Math.max(0, this.filesOpening - 1);
 				}, 1000);
@@ -219,6 +234,19 @@ export class PositionTracker {
 	}
 
 	/**
+	 * Save position for a specific leaf (used when switching away).
+	 */
+	private saveLeafPosition(leaf: FileLeaf): void {
+		if (!leaf?.view?.file) return;
+		const key = this.getFileKey(leaf.view);
+		if (!key) return;
+		const position = this.capturePosition(leaf.view);
+		if (position) {
+			this.store.set(key, position);
+		}
+	}
+
+	/**
 	 * Save the current position of the active markdown view.
 	 */
 	private saveCurrentPosition(): void {
@@ -226,6 +254,10 @@ export class PositionTracker {
 
 		const leaf = this.plugin.app.workspace.getMostRecentLeaf();
 		if (!leaf?.view || leaf.view.getViewType() !== "markdown") return;
+
+		// Keep lastLeaf in sync
+		this.lastLeaf = leaf as FileLeaf;
+
 		const view = leaf.view as FileView;
 		if (!view.file) return;
 
@@ -308,13 +340,8 @@ export class PositionTracker {
 
 			window.setTimeout(() => {
 				this.applyPosition(leaf.view, saved);
-				// Re-save the restored position so subsequent saves can't
-				// overwrite with scroll=0 before the scroll animation completes
-				const rKey = this.getFileKey(leaf.view);
-				if (rKey) {
-					this.store.set(rKey, saved);
-				}
-				// Keep saves blocked while scroll settles
+				// Keep saves blocked while scroll settles (the restore triggers
+				// scroll events we don't want to capture as "new" positions)
 				window.setTimeout(() => {
 					this.filesOpening = Math.max(0, this.filesOpening - 1);
 				}, 500);

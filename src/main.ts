@@ -1,4 +1,4 @@
-import { Plugin } from "obsidian";
+import { MarkdownView, Plugin } from "obsidian";
 import { PluginSettings, DEFAULT_SETTINGS } from "./types";
 import { PositionStore } from "./store";
 import { PositionTracker } from "./tracker";
@@ -16,6 +16,7 @@ export default class RememberScrollPositionPlugin extends Plugin {
 	private tracker: PositionTracker;
 
 	async onload(): Promise<void> {
+		console.log("[RSP] Remember Scroll Position v1.0.3 loading...");
 		await this.loadSettings();
 
 		this.store = new PositionStore(this, this.settings);
@@ -25,6 +26,40 @@ export default class RememberScrollPositionPlugin extends Plugin {
 		this.tracker.register();
 
 		this.addSettingTab(new SettingsTab(this.app, this));
+
+		// Write a breadcrumb to confirm plugin loaded
+		try {
+			await this.app.vault.adapter.write(
+				".obsidian/plugins/remember-scroll-position/loaded.txt",
+				"Plugin loaded at " + new Date().toISOString()
+			);
+		} catch (e) {
+			// ignore
+		}
+
+		// Debug: periodically write state to disk to diagnose issues
+		this.registerInterval(
+			window.setInterval(() => {
+				const mdView = this.app.workspace.getActiveViewOfType(MarkdownView);
+				const leaf = this.app.workspace.getMostRecentLeaf();
+				const file = this.app.workspace.getActiveFile();
+				const debugInfo = {
+					time: new Date().toISOString(),
+					activeFile: file?.path ?? "none",
+					hasMarkdownView: !!mdView,
+					leafViewType: leaf?.view?.getViewType?.() ?? "none",
+					leafViewConstructor: leaf?.view?.constructor?.name ?? "none",
+					viewMode: mdView?.getMode?.() ?? "n/a",
+					storeSize: this.store.size,
+				};
+				this.app.vault.adapter.write(
+					".obsidian/plugins/remember-scroll-position/debug.json",
+					JSON.stringify(debugInfo, null, 2)
+				);
+			}, 3000)
+		);
+
+		console.log("[RSP] Plugin loaded successfully");
 	}
 
 	async onunload(): Promise<void> {

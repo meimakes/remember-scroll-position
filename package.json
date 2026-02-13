@@ -1,6 +1,6 @@
 {
 	"name": "remember-scroll-position",
-	"version": "1.0.10",
+	"version": "1.0.11",
 	"description": "Remembers your cursor and scroll position for each note",
 	"main": "main.js",
 	"scripts": {
@@ -17,6 +17,9 @@
 	],
 	"author": "Mei Park <hey@meimakes.com>",
 	"license": "MIT",
+	"dependencies": {
+		"monkey-around": "^3.0.0"
+	},
 	"devDependencies": {
 		"@types/node": "^22.0.0",
 		"builtin-modules": "^4.0.0",
@@ -24,8 +27,5 @@
 		"obsidian": "latest",
 		"tslib": "^2.7.0",
 		"typescript": "^5.6.0"
-	},
-	"dependencies": {
-		"monkey-around": "^3.0.0"
 	}
 }

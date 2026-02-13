@@ -13,7 +13,9 @@ export class SettingsTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 
-		containerEl.createEl("h2", { text: "Remember Scroll Position" });
+		new Setting(containerEl)
+			.setName("Remember scroll position")
+			.setHeading();
 
 		new Setting(containerEl)
 			.setName("Restore cursor position")

@@ -36,7 +36,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 	restoreCursor: true,
 	maxPositions: 500,
 	persistToDisk: true,
-	filePath: ".obsidian/plugins/remember-scroll-position/positions.json",
+	filePath: "",
 	restoreDelay: 50,
 	respectLinks: true,
 };

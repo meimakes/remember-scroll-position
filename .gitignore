@@ -1,12 +1,3 @@
-# Build output
+node_modules/
 main.js
-
-# npm
-node_modules
-
-# IDE
-.idea
-.vscode
-
-# OS
-.DS_Store
+*.js.map

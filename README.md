@@ -29,9 +29,7 @@ The plugin uses Obsidian's native events (not polling) to track position changes
 ## Installation
 
 ### From Obsidian Community Plugins
-1. Open Settings → Community Plugins → Browse
-2. Search for "Remember Scroll Position"
-3. Click Install, then Enable
+> **Status:** Submitted for review — pending addition to the community plugin directory. In the meantime, install manually (see below).
 
 ### Manual Installation
 1. Download the latest release from GitHub

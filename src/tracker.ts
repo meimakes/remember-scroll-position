@@ -42,6 +42,11 @@ export class PositionTracker {
 	/** Number of files currently in the process of opening */
 	private filesOpening = 0;
 
+	/** The file path we're currently navigating away from (to save its position before overwrite) */
+	private lastActiveFilePath: string | null = null;
+	/** Cached position of the last active file, captured before the switch */
+	private lastActivePosition: SavedPosition | null = null;
+
 	/** Set of leaf+file IDs we've already seen (to detect tab switches vs new opens) */
 	private knownLeafFiles = new Set<string>();
 
@@ -100,13 +105,25 @@ export class PositionTracker {
 		}
 
 		// File open — restore position
+		// Note: active-leaf-change fires first (saves old position), then file-open fires (restores new)
 		this.plugin.registerEvent(
-			app.workspace.on("file-open", (file: TFile) => this.handleFileOpen(file))
+			app.workspace.on("file-open", (file: TFile) => {
+				// Small delay to ensure active-leaf-change save completed
+				window.setTimeout(() => this.handleFileOpen(file), 50);
+			})
 		);
 
-		// Active leaf change — save position of the leaf we're leaving
+		// Active leaf change — block saves temporarily so the new file's
+		// initial scroll=0 doesn't overwrite the previously saved position.
+		// Uses a short timeout instead of a counter to avoid stuck states.
 		this.plugin.registerEvent(
-			app.workspace.on("active-leaf-change", () => this.saveDebounced())
+			app.workspace.on("active-leaf-change", () => {
+				this.filesOpening++;
+				// Safety timeout: always unblock saves after 1s even if restore doesn't fire
+				window.setTimeout(() => {
+					this.filesOpening = Math.max(0, this.filesOpening - 1);
+				}, 1000);
+			})
 		);
 
 		// File delete — clean up stored position
@@ -127,16 +144,22 @@ export class PositionTracker {
 		app.workspace.onLayoutReady(() => this.handleLayoutReady());
 
 		// Scroll events via DOM — capture phase to catch all scrollable elements
+		// Use document (not activeWindow.document) for mobile compatibility
 		this.plugin.registerDomEvent(
-			activeWindow.document,
+			document,
 			"scroll",
 			(e: Event) => this.onScrollDebounced(e),
 			true
 		);
 
-		// Periodic save as safety net (every 30s)
+		// Also listen to editor changes as a save trigger
+		this.plugin.registerEvent(
+			app.workspace.on("editor-change", () => this.saveDebounced())
+		);
+
+		// Periodic save as safety net (every 5s)
 		this.plugin.registerInterval(
-			window.setInterval(() => this.saveCurrentPosition(), 30000)
+			window.setInterval(() => this.saveCurrentPosition(), 5000)
 		);
 	}
 
@@ -152,23 +175,26 @@ export class PositionTracker {
 	 * Handle file open event.
 	 */
 	private handleFileOpen(_file: TFile | null): void {
-		if (!this.layoutReady) return;
+		if (!this.layoutReady) {
+			this.filesOpening = Math.max(0, this.filesOpening - 1);
+			return;
+		}
 
 		// Check if a heading/block link was used
 		if (this.settings.respectLinks) {
 			const hasFlashing =
 				this.plugin.app.workspace.containerEl.querySelector("span.is-flashing");
-			if (hasFlashing || this.linkUsed) return;
+			if (hasFlashing || this.linkUsed) {
+				this.filesOpening = Math.max(0, this.filesOpening - 1);
+				return;
+			}
 		}
 
 		const leaf = this.plugin.app.workspace.getMostRecentLeaf() as FileLeaf;
-		if (!leaf?.view?.file) return;
-
-		// Check if this is a tab switch (already opened) vs genuinely opening the file
-		const leafFileId = leaf.id + ":" + leaf.view.file.path;
-		const alreadyOpen = this.knownLeafFiles.has(leafFileId);
-		this.refreshKnownLeaves();
-		if (alreadyOpen) return;
+		if (!leaf?.view?.file) {
+			this.filesOpening = Math.max(0, this.filesOpening - 1);
+			return;
+		}
 
 		this.restorePosition(leaf);
 	}
@@ -195,31 +221,35 @@ export class PositionTracker {
 	private saveCurrentPosition(): void {
 		if (!this.layoutReady || this.filesOpening > 0) return;
 
-		const view = this.plugin.app.workspace.getActiveViewOfType(FileView);
-		if (!view?.file) return;
+		const leaf = this.plugin.app.workspace.getMostRecentLeaf();
+		if (!leaf?.view || leaf.view.getViewType() !== "markdown") return;
+		const view = leaf.view as FileView;
+		if (!view.file) return;
 
 		const key = this.getFileKey(view);
 		if (!key) return;
 		const position = this.capturePosition(view);
 		if (position) {
+			console.log(`[RSP] Saving position for ${key}:`, position.scroll ?? position.scrollTop, position.cursor?.from);
 			this.store.set(key, position);
 		}
 	}
 
 	/**
 	 * Capture the current position from a view.
+	 * Uses getViewType() instead of instanceof because bundled class references
+	 * don't match Obsidian's runtime classes.
 	 */
 	private capturePosition(view: FileView): SavedPosition | null {
 		const timestamp = Date.now();
 
-		if (view instanceof MarkdownView) {
-			if (view.getMode() === "source") {
-				const cursor = view.editor.getCursor("head");
-				const anchor = view.editor.getCursor("anchor");
-				const scrollInfo = view.editor.getScrollInfo();
-
-				// Ephemeral state gives us Obsidian's internal scroll value
-				const ephemeral = view.getEphemeralState() as { scroll?: number };
+		if (view.getViewType() === "markdown") {
+			const mdView = view as MarkdownView;
+			if (mdView.getMode() === "source") {
+				const cursor = mdView.editor.getCursor("head");
+				const anchor = mdView.editor.getCursor("anchor");
+				const scrollInfo = mdView.editor.getScrollInfo();
+				const ephemeral = mdView.getEphemeralState() as { scroll?: number };
 
 				return {
 					timestamp,
@@ -252,11 +282,18 @@ export class PositionTracker {
 		if (!leaf?.view?.file) return;
 
 		const key = this.getFileKey(leaf.view);
-		if (!key) return;
+		if (!key) {
+			this.filesOpening = Math.max(0, this.filesOpening - 1);
+			return;
+		}
 		const saved = this.store.get(key);
-		if (!saved) return;
+		if (!saved) {
+			console.log(`[RSP] No saved position for ${key}`);
+			this.filesOpening = Math.max(0, this.filesOpening - 1);
+			return;
+		}
 
-		this.filesOpening++;
+		console.log(`[RSP] Restoring position for ${key}:`, saved.scroll ?? saved.scrollTop, saved.cursor?.from);
 
 		// Wait for the leaf to finish loading, then restore
 		let attempts = 0;
@@ -269,7 +306,16 @@ export class PositionTracker {
 
 			window.setTimeout(() => {
 				this.applyPosition(leaf.view, saved);
-				this.filesOpening--;
+				// Re-save the restored position so subsequent saves don't overwrite
+				// with scroll=0 before the scroll animation completes
+				const rKey = this.getFileKey(leaf.view);
+				if (rKey) {
+					this.store.set(rKey, saved);
+				}
+				// Keep saves blocked a bit longer for scroll to settle
+				window.setTimeout(() => {
+					this.filesOpening = Math.max(0, this.filesOpening - 1);
+				}, 500);
 			}, this.settings.restoreDelay);
 		};
 
@@ -278,18 +324,20 @@ export class PositionTracker {
 
 	/**
 	 * Apply a saved position to a view.
+	 * Uses getViewType() instead of instanceof for runtime compatibility.
 	 */
 	private applyPosition(view: FileView, saved: SavedPosition): void {
-		if (view instanceof MarkdownView) {
-			if (view.getMode() === "source") {
+		if (view.getViewType() === "markdown") {
+			const mdView = view as MarkdownView;
+			if (mdView.getMode() === "source") {
+				// Restore cursor selection if enabled
 				if (saved.cursor && this.settings.restoreCursor) {
-					view.editor.setSelection(saved.cursor.from, saved.cursor.to);
-					view.editor.scrollIntoView(
-						{ from: saved.cursor.from, to: saved.cursor.to },
-						true
-					);
-				} else if (saved.scroll !== undefined) {
-					view.setEphemeralState({ scroll: saved.scroll });
+					mdView.editor.setSelection(saved.cursor.from, saved.cursor.to);
+				}
+				// Always restore scroll position (don't use scrollIntoView which
+				// just ensures cursor visibility and ignores actual scroll offset)
+				if (saved.scroll !== undefined) {
+					mdView.setEphemeralState({ scroll: saved.scroll });
 				}
 			} else {
 				// Reading mode

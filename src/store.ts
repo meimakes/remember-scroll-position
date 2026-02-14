@@ -2,7 +2,28 @@ import { Plugin, normalizePath } from "obsidian";
 import { SavedPosition, PluginSettings } from "./types";
 
 /**
+ * Get or create a stable device ID stored in localStorage.
+ * localStorage is device-local and never synced by Obsidian Sync,
+ * making it ideal for distinguishing devices.
+ */
+function getDeviceId(): string {
+	const key = "remember-scroll-position-device-id";
+	let id = window.localStorage.getItem(key);
+	if (!id) {
+		// Generate a short random ID (8 hex chars)
+		const arr = new Uint8Array(4);
+		crypto.getRandomValues(arr);
+		id = Array.from(arr, (b) => b.toString(16).padStart(2, "0")).join("");
+		window.localStorage.setItem(key, id);
+	}
+	return id;
+}
+
+/**
  * Manages the position state store with LRU eviction and optional disk persistence.
+ *
+ * Each device gets its own positions file (e.g., positions-a1b2c3d4.json)
+ * to avoid sync conflicts when the vault is synced across multiple devices.
  */
 export class PositionStore {
 	private positions: Record<string, SavedPosition> = {};
@@ -10,6 +31,7 @@ export class PositionStore {
 	private settings: PluginSettings;
 	private dirty = false;
 	private writeTimer: number | null = null;
+	private deviceId: string;
 
 	/** Debounce interval for writing to disk (ms) */
 	private static readonly WRITE_DEBOUNCE = 2000;
@@ -17,6 +39,16 @@ export class PositionStore {
 	constructor(plugin: Plugin, settings: PluginSettings) {
 		this.plugin = plugin;
 		this.settings = settings;
+		this.deviceId = getDeviceId();
+	}
+
+	/**
+	 * Get the device-specific file path for positions storage.
+	 * Replaces "positions.json" with "positions-{deviceId}.json" in the configured path.
+	 */
+	getFilePath(): string {
+		const base = this.settings.filePath;
+		return base.replace(/positions\.json$/, `positions-${this.deviceId}.json`);
 	}
 
 	/**
@@ -25,12 +57,24 @@ export class PositionStore {
 	async load(): Promise<void> {
 		if (!this.settings.persistToDisk) return;
 
-		const filePath = normalizePath(this.settings.filePath);
+		const filePath = normalizePath(this.getFilePath());
 		try {
 			if (await this.plugin.app.vault.adapter.exists(filePath)) {
 				const data = await this.plugin.app.vault.adapter.read(filePath);
 				if (data) {
 					this.positions = JSON.parse(data);
+				}
+			} else {
+				// Migration: try loading from the old shared positions.json
+				const oldPath = normalizePath(this.settings.filePath);
+				if (await this.plugin.app.vault.adapter.exists(oldPath)) {
+					const data = await this.plugin.app.vault.adapter.read(oldPath);
+					if (data) {
+						this.positions = JSON.parse(data);
+						this.dirty = true;
+						// Write to the new device-specific file
+						await this.writeToDisk();
+					}
 				}
 			}
 		} catch (e) {
@@ -140,7 +184,7 @@ export class PositionStore {
 	private async writeToDisk(): Promise<void> {
 		if (!this.settings.persistToDisk) return;
 
-		const filePath = normalizePath(this.settings.filePath);
+		const filePath = normalizePath(this.getFilePath());
 		try {
 			// Ensure directory exists
 			const dir = filePath.substring(0, filePath.lastIndexOf("/"));

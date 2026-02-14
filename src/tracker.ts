@@ -172,6 +172,18 @@ export class PositionTracker {
 			true
 		);
 
+		// Touch end as fallback for mobile — scroll events may not
+		// propagate to document on all mobile platforms
+		this.plugin.registerDomEvent(
+			document,
+			"touchend",
+			() => {
+				// Delay to let scroll momentum settle
+				window.setTimeout(() => this.saveDebounced(), 300);
+			},
+			true
+		);
+
 		// Editor changes also trigger saves (cursor movement, typing)
 		this.plugin.registerEvent(
 			app.workspace.on("editor-change", () => this.saveDebounced())
@@ -355,8 +367,9 @@ export class PositionTracker {
 	/**
 	 * Apply a saved position to a view.
 	 *
-	 * Important: uses setEphemeralState({ scroll }) for scroll restore,
-	 * NOT editor.scrollIntoView() which only ensures cursor visibility.
+	 * Uses setEphemeralState({ scroll }) as the primary restore mechanism,
+	 * with editor.scrollTo(scrollTop) as fallback for mobile where
+	 * ephemeral state may not work reliably.
 	 */
 	private applyPosition(view: FileView, saved: SavedPosition): void {
 		if (view.getViewType() === "markdown") {
@@ -367,6 +380,17 @@ export class PositionTracker {
 				}
 				if (saved.scroll !== undefined) {
 					mdView.setEphemeralState({ scroll: saved.scroll });
+				}
+				// Fallback: use scrollTo if ephemeral state didn't work
+				// (common on mobile). Delay slightly to let ephemeral settle.
+				if (saved.scrollTop !== undefined) {
+					window.setTimeout(() => {
+						const currentTop = mdView.editor.getScrollInfo()?.top ?? 0;
+						// Only apply fallback if ephemeral state didn't move us
+						if (saved.scroll === undefined || Math.abs(currentTop) < 5) {
+							mdView.editor.scrollTo(0, saved.scrollTop as number);
+						}
+					}, 50);
 				}
 			} else {
 				// Reading mode

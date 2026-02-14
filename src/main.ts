@@ -15,27 +15,39 @@ export default class RememberScrollPositionPlugin extends Plugin {
 	private store: PositionStore;
 	private tracker: PositionTracker;
 
-	async onload(): Promise<void> {
-		await this.loadSettings();
+	onload(): void {
+		const init = async () => {
+			await this.loadSettings();
 
-		this.store = new PositionStore(this, this.settings);
-		await this.store.load();
+			this.store = new PositionStore(this, this.settings);
+			await this.store.load();
 
-		this.tracker = new PositionTracker(this, this.store, this.settings);
-		this.tracker.register();
+			this.tracker = new PositionTracker(this, this.store, this.settings);
+			this.tracker.register();
 
-		this.addSettingTab(new SettingsTab(this.app, this));
+			this.addSettingTab(new SettingsTab(this.app, this));
+		};
+		init();
 	}
 
-	async onunload(): Promise<void> {
-		await this.store.flush();
+	onunload(): void {
+		this.store?.flush();
 	}
 
 	async loadSettings(): Promise<void> {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		this.settings = Object.assign(
+			{},
+			DEFAULT_SETTINGS,
+			{ filePath: this.defaultFilePath() },
+			await this.loadData(),
+		);
 	}
 
 	async saveSettings(): Promise<void> {
 		await this.saveData(this.settings);
+	}
+
+	private defaultFilePath(): string {
+		return `${this.app.vault.configDir}/plugins/remember-scroll-position/positions.json`;
 	}
 }

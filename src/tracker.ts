@@ -8,6 +8,7 @@ import {
 	// Use `view.getViewType() === "markdown"` instead, then cast.
 	MarkdownView,
 	OpenViewState,
+	Plugin,
 	TAbstractFile,
 	TFile,
 	Workspace,
@@ -44,7 +45,7 @@ interface FileLeaf extends WorkspaceLeaf {
 export class PositionTracker {
 	private store: PositionStore;
 	private settings: PluginSettings;
-	private plugin: any; // RememberScrollPositionPlugin
+	private plugin: Plugin;
 
 	/** Tracks whether a link was used to open the current file */
 	private linkUsed = false;
@@ -71,7 +72,7 @@ export class PositionTracker {
 	/** Debounced scroll handler */
 	private onScrollDebounced: Debouncer<[Event], void>;
 
-	constructor(plugin: any, store: PositionStore, settings: PluginSettings) {
+	constructor(plugin: Plugin, store: PositionStore, settings: PluginSettings) {
 		this.plugin = plugin;
 		this.store = store;
 		this.settings = settings;
@@ -91,16 +92,16 @@ export class PositionTracker {
 		if (this.settings.respectLinks) {
 			this.plugin.register(
 				around(Workspace.prototype, {
-					openLinkText: (original: any) => {
+					openLinkText: (original: Workspace["openLinkText"]) => {
 						return async (
 							linktext: string,
 							sourcePath: string,
 							newLeaf?: boolean,
 							openViewState?: OpenViewState
-						) => {
+						): Promise<void> => {
 							this.linkUsed = true;
 							try {
-								return await original.call(
+								await original.call(
 									app.workspace,
 									linktext,
 									sourcePath,
@@ -118,7 +119,7 @@ export class PositionTracker {
 
 		// File open — restore position
 		this.plugin.registerEvent(
-			app.workspace.on("file-open", (file: TFile) => this.handleFileOpen(file))
+			app.workspace.on("file-open", (file: TFile | null) => { this.handleFileOpen(file); })
 		);
 
 		// Active leaf change — save outgoing leaf's position, then block saves
@@ -400,12 +401,14 @@ export class PositionTracker {
 		if (!leaf?.parent?.parent) return "";
 
 		const path: number[] = [];
-		let current: any = leaf.parent;
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		let current: Record<string, unknown> = leaf.parent as unknown as Record<string, unknown>;
 
 		while (current?.parent) {
-			const idx = current.parent.children?.indexOf(current) ?? 0;
+			const parent = current.parent as Record<string, unknown>;
+			const idx = (parent.children as unknown[])?.indexOf(current) ?? 0;
 			path.unshift(idx);
-			current = current.parent;
+			current = parent;
 		}
 
 		if (path.every((i) => i === 0)) return "";

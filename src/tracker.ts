@@ -10,7 +10,6 @@ import {
 	OpenViewState,
 	Plugin,
 	TAbstractFile,
-	TFile,
 	Workspace,
 	WorkspaceLeaf,
 } from "obsidian";
@@ -119,7 +118,7 @@ export class PositionTracker {
 
 		// File open — restore position
 		this.plugin.registerEvent(
-			app.workspace.on("file-open", (file: TFile | null) => { this.handleFileOpen(file); })
+			app.workspace.on("file-open", () => { this.handleFileOpen(); })
 		);
 
 		// Active leaf change — save outgoing leaf's position, then block saves
@@ -198,7 +197,7 @@ export class PositionTracker {
 	/**
 	 * Handle scroll events.
 	 */
-	private handleScroll(_event: Event): void {
+	private handleScroll(): void {
 		if (!this.layoutReady || this.filesOpening > 0) return;
 		this.saveCurrentPosition();
 	}
@@ -206,7 +205,7 @@ export class PositionTracker {
 	/**
 	 * Handle file open event. Restores saved position for the opened file.
 	 */
-	private handleFileOpen(_file: TFile | null): void {
+	private handleFileOpen(): void {
 		if (!this.layoutReady) {
 			this.filesOpening = Math.max(0, this.filesOpening - 1);
 			return;
@@ -425,7 +424,6 @@ export class PositionTracker {
 		if (!leaf?.parent?.parent) return "";
 
 		const path: number[] = [];
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		let current: Record<string, unknown> = leaf.parent as unknown as Record<string, unknown>;
 
 		while (current?.parent) {

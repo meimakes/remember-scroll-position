@@ -1,6 +1,6 @@
 {
 	"name": "remember-scroll-position",
-	"version": "1.0.14",
+	"version": "1.0.15",
 	"description": "Remembers your cursor and scroll position for each note",
 	"main": "main.js",
 	"scripts": {
@@ -18,6 +18,10 @@
 	"author": "Mei Park <hey@meimakes.com>",
 	"license": "MIT",
 	"dependencies": {
+		"@typescript-eslint/eslint-plugin": "^8.56.0",
+		"@typescript-eslint/parser": "^8.56.0",
+		"eslint": "^8.57.1",
+		"eslint-plugin-obsidian": "^2.29.0",
 		"monkey-around": "^3.0.0"
 	},
 	"devDependencies": {

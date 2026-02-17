@@ -15,23 +15,20 @@ export default class RememberScrollPositionPlugin extends Plugin {
 	private store: PositionStore;
 	private tracker: PositionTracker;
 
-	onload(): void {
-		const init = async () => {
-			await this.loadSettings();
+	async onload(): Promise<void> {
+		await this.loadSettings();
 
-			this.store = new PositionStore(this, this.settings);
-			await this.store.load();
+		this.store = new PositionStore(this, this.settings);
+		await this.store.load();
 
-			this.tracker = new PositionTracker(this, this.store, this.settings);
-			this.tracker.register();
+		this.tracker = new PositionTracker(this, this.store, this.settings);
+		this.tracker.register();
 
-			this.addSettingTab(new SettingsTab(this.app, this));
-		};
-		init();
+		this.addSettingTab(new SettingsTab(this.app, this));
 	}
 
 	onunload(): void {
-		this.store?.flush();
+		void this.store?.flush();
 	}
 
 	async loadSettings(): Promise<void> {

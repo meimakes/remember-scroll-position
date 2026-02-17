@@ -14,7 +14,7 @@ export class SettingsTab extends PluginSettingTab {
 		containerEl.empty();
 
 		new Setting(containerEl)
-			.setName("Remember scroll position")
+			.setName("Settings")
 			.setHeading();
 
 		new Setting(containerEl)

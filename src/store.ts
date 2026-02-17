@@ -170,10 +170,10 @@ export class PositionStore {
 	private scheduleDiskWrite(): void {
 		if (!this.settings.persistToDisk || this.writeTimer !== null) return;
 
-		this.writeTimer = window.setTimeout(async () => {
+		this.writeTimer = window.setTimeout(() => {
 			this.writeTimer = null;
 			if (this.dirty) {
-				await this.writeToDisk();
+				void this.writeToDisk();
 			}
 		}, PositionStore.WRITE_DEBOUNCE);
 	}

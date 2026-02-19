@@ -14,7 +14,7 @@ export class SettingsTab extends PluginSettingTab {
 		containerEl.empty();
 
 		new Setting(containerEl)
-			.setName("Settings")
+			.setName("Configuration")
 			.setHeading();
 
 		new Setting(containerEl)

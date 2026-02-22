@@ -211,17 +211,19 @@ export class PositionTracker {
 			return;
 		}
 
-		// Don't override position when navigating via heading/block links
+		const leaf = this.plugin.app.workspace.getMostRecentLeaf() as FileLeaf;
+
+		// Don't override position when navigating via heading/block links.
+		// Check only the current leaf's container for flashing spans —
+		// a stale is-flashing in another split should not block restores here.
 		if (this.settings.respectLinks) {
 			const hasFlashing =
-				this.plugin.app.workspace.containerEl.querySelector("span.is-flashing");
+				leaf?.view?.containerEl?.querySelector("span.is-flashing");
 			if (hasFlashing || this.linkUsed) {
 				this.filesOpening = Math.max(0, this.filesOpening - 1);
 				return;
 			}
 		}
-
-		const leaf = this.plugin.app.workspace.getMostRecentLeaf() as FileLeaf;
 		if (!leaf?.view?.file) {
 			this.filesOpening = Math.max(0, this.filesOpening - 1);
 			return;
